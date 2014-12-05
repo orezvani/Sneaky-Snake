@@ -1,2 +1,2 @@
-cd dir && g++ -o test test.cpp && timeout 1 ./test
-cd dir && g++ -o test test.cpp && timeout 1 ./test
+./test
+./test

@@ -1,7 +1,44 @@
 #!/usr/bin/python
 
-import os, sys, getopt, pxssh, pexpect
+import os, sys, getopt, pxssh, pexpect, datetime
 sneak_err = 'sneak.py -i <hosts> -j <jobs> -k <project>'
+
+
+# read i-th line of file
+def readline(file, i):
+    j = 0
+    for line in open(file, 'r'):
+        j = j + 1
+        if (j==i):
+            return line.strip()
+    if (i>j):
+        return "line number error"
+
+
+# assign the job to host
+def assign_job(host, job, dir, defaults):
+    try:
+        scp = pexpect.spawn("scp -r " + dir + " " + host[1] + "@" + host[0] + ":")
+        if (scp.expect(["password:", pexpect.EOF])==0):
+            scp.sendline(host[2])
+            scp.expect(pexpect.EOF)
+        s = pxssh.pxssh()
+        s.login (host[0], host[1], host[2])
+        s.sendline(defaults)
+        s.prompt()
+        s.sendline("nohup " + job + " & > pid")
+        s.prompt()
+        #print s.before
+        pid = s.before.split()
+        pid = pid[len(pid)-1]
+        #print pid
+        now = datetime.datetime.now()
+        os.system("echo " + job + " " + host[0] + " " + host[1] + " " + host[2] + " " + pid + " %d:%d:%d:" % (now.year, now.month, now.day) + "%d:%d:%d" % (now.hour, now.minute, now.second) + " Running >> .log")
+        s.logout()
+    except pxssh.ExceptionPxssh, e:
+        print "pxssh failed on login."
+        print str(e)
+
 
 def main(argv):
    hosts = ''
@@ -28,44 +65,24 @@ def main(argv):
        sys.exit(2)
 
    # Load Hosts
+   defaults = "cd dir && g++ -o test test.cpp"
    data = [line.strip() for line in open(hosts, 'r')]
    hosts_data = [line.split() for line in data]
-   s = []
    n = 0
    for host in hosts_data:
        res = os.system("ping -c 1 " + host[0] + " > /dev/null 2>&1")
        if (res == 0):
-           try:
-                s.append(pxssh.pxssh())
-                s[n].login (host[0], host[1], host[2])
-                scp = pexpect.spawn("scp -r " + dir + " " + host[1] + "@" + host[0] + ":")
-                if (scp.expect(["password:", pexpect.EOF])==0):
-                    scp.sendline(host[2])
-                    scp.expect(pexpect.EOF)
-                #s[i].sendline ('uptime')   # run a command
-                #s[i].prompt()             # match the prompt
-                #print s[i].before          # print everything before the prompt.
-                n = n + 1
-           except pxssh.ExceptionPxssh, e:
-               print "pxssh failed on login."
-               print str(e)
-   print 'Successfully connected to %d host(s).\n' % n
-
-   # Run Jobs
-   jobs_data = [line.strip() for line in open(jobs, 'r')]
-   while (len(jobs_data)>0):
-       for ss in s:
-           ss.sendline(jobs_data[0])
-           ss.prompt()
-           print ss.before
-           jobs_data.pop(0)
+            n = n + 1
+            job = readline(jobs, n)
+            if (job != "line number error"):
+                assign_job(host, job, dir, defaults)
 
 
 
-   # Logging out
-   for ss in s:
-       ss.logout()
-   print "Successfully disconnected from %d host(s)." % n
+
+
+
+
 
 
 if __name__ == "__main__":
