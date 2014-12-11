@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import os, sys, getopt, pxssh, pexpect, datetime, Queue, threading
+import os, sys, getopt, pxssh, pexpect, socket, datetime, Queue, threading
 sneak_err = 'sneak.py -i <hosts> -j <jobs> -k <project>'
 
 exitFlag = 0
@@ -30,7 +30,25 @@ def assign_job(jobs_queue, host):
                 jobs_lock.release()
                 s = pxssh.pxssh()
                 s.login (host[0], host[1], host[2])
-                s.sendline("nohup " + job + " & > pid")
+                s.sendline("echo '#!/usr/bin/python' > run.py")
+                s.prompt()
+                s.sendline("echo 'import os, socket' >> run.py")
+                s.prompt()
+                s.sendline("echo 'os.system(\"" + job + "\")' >> run.py")
+                s.prompt()
+                s.sendline("echo 'HOST = \"150.203.210.120\"' >> run.py")
+                s.prompt()
+                s.sendline("echo 'PORT = 8000' >> run.py")
+                s.prompt()
+                s.sendline("echo 's = socket.socket(socket.AF_INET, socket.SOCK_STREAM)' >> run.py")
+                s.prompt()
+                s.sendline("echo 's.connect((HOST, PORT))' >> run.py")
+                s.prompt()
+                s.sendline("echo 's.sendall(\"Hello, world\")' >> run.py")
+                s.prompt()
+                s.sendline("echo 's.close()' >> run.py")
+                s.prompt()
+                s.sendline("nohup " +  + " & > pid")
                 s.prompt()
                 #print s.before
                 pid = s.before.split()
@@ -46,9 +64,11 @@ def assign_job(jobs_queue, host):
 
 class rThread (threading.Thread):
     def __init__(self, jobs_queue):
-        self.jobs_queue = jobs_queue    def run(self):
+        self.jobs_queue = jobs_queue
+    def run(self):
         while True:
-            #if (received a signal from worker) assign_job(self.jobs_queue, worker, self.defaults, self.dir)
+            print "sth"
+            # listen to the port and if (received a signal from worker) assign_job(self.jobs_queue, worker, self.defaults, self.dir)
 
 
 def main(argv):
@@ -113,6 +133,39 @@ def main(argv):
                #print str(e)
 
 
+   for host in hosts_data:
+       res = os.system("ping -c 1 " + host[0] + " > /dev/null 2>&1")
+       if (res == 0):
+           try:
+               s = pxssh.pxssh()
+               s.login (host[0], host[1], host[2])
+               s.sendline("echo '#!/usr/bin/python' > run.py")
+               s.prompt()
+               s.sendline("echo 'import os, socket' >> run.py")
+               s.prompt()
+               s.sendline("echo 'os.system(\"cd dir && ./test\")' >> run.py")
+               s.prompt()
+               s.sendline("echo 'HOST = \"150.203.210.120\"' >> run.py")
+               s.prompt()
+               s.sendline("echo 'PORT = 8000' >> run.py")
+               s.prompt()
+               s.sendline("echo 's = socket.socket(socket.AF_INET, socket.SOCK_STREAM)' >> run.py")
+               s.prompt()
+               s.sendline("echo 's.connect((HOST, PORT))' >> run.py")
+               s.prompt()
+               s.sendline("echo 's.sendall(\"Hello, world\")' >> run.py")
+               s.prompt()
+               s.sendline("echo 's.close()' >> run.py")
+               s.prompt()
+               #s.sendline("nohup python run.py")
+               #s.prompt()
+               #print s.before
+               #s.logout()
+           except pxssh.ExceptionPxssh, e:
+               print "pxssh failed on login."
+               #print str(e)
+
+   print "finished running"
 
 
 
