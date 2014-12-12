@@ -44,7 +44,7 @@ def assign_job(jobs_queue, host):
                 s.prompt()
                 s.sendline("echo 's.connect((HOST, PORT))' >> run.py")
                 s.prompt()
-                s.sendline("echo 's.sendall(\"Hello, world\")' >> run.py")
+                s.sendline("echo 's.sendall(\"Msg containing the job and the output of the job that is being finished\")' >> run.py")
                 s.prompt()
                 s.sendline("echo 's.close()' >> run.py")
                 s.prompt()
@@ -66,9 +66,21 @@ class rThread (threading.Thread):
     def __init__(self, jobs_queue):
         self.jobs_queue = jobs_queue
     def run(self):
+        # listen to the port and if (received a signal from worker) assign_job(self.jobs_queue, worker, self.defaults, self.dir)
         while True:
-            print "sth"
-            # listen to the port and if (received a signal from worker) assign_job(self.jobs_queue, worker, self.defaults, self.dir)
+            HOST = ''
+            PORT = 8000
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind((HOST, PORT))
+            s.listen(1)
+            conn, addr = s.accept()
+            print 'Connected by', addr
+            while 1:
+                data = conn.recv(1024)
+                if not data: break
+                print data
+            conn.close()
+
 
 
 def main(argv):
