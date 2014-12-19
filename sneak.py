@@ -159,7 +159,7 @@ def main(argv):
 
    # find all the workers that are reachable and login-able and ask them to send a signal
    # default command that needs to be run on workers
-   defaults = "cd dir && g++ -o test test.cpp"
+   defaults = "uname -a"
    data = [line.strip() for line in open(hosts, 'r')]
    hosts_data = [line.split() for line in data]
    for host in hosts_data:
@@ -199,7 +199,7 @@ def main(argv):
                s.prompt()
                s.sendline("echo 'import os, socket' >> run.py")
                s.prompt()
-               s.sendline("echo 'os.system(\"cd dir && ./test\")' >> run.py")
+               s.sendline("echo 'os.system(\"cd dir && python test.py\")' >> run.py")
                s.prompt()
                s.sendline("echo 'HOST = \"150.203.210.120\"' >> run.py")
                s.prompt()
