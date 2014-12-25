@@ -39,30 +39,47 @@ def create_job_runner_file(s, job):
     s.prompt()
     s.sendline("echo 'while (l):' >> run.py")
     s.prompt()
-    s.sendline("echo '    s.send(l):' >> run.py")
+    s.sendline("echo '    s.send(l)' >> run.py")
     s.prompt()
     s.sendline("echo '    l = f.read(1024)' >> run.py")
     s.prompt()
     s.sendline("echo 's.close()' >> run.py")
     s.prompt()
+    s.sendline("echo 'os.system(\"rm -f _job_output\")' >> run.py")
+    s.prompt()
 
+# assign the job to host
+def assign_initial_job(job, host):
+    res = os.system("ping -c 1 " + host[0] + " > /dev/null 2>&1")
+    if res == 0:
+        try:
+            s = pxssh.pxssh()
+            s.login(host[0], host[1], host[2])
+            create_job_runner_file(s, job)
+            s.sendline("nohup python run.py & > pid")
+            s.logout()
+        except pxssh.ExceptionPxssh, e:
+            print "Failed to login: " + host[0]
+    else:
+        print "Host " + host[0] + " unreachable."
 
 # assign the job to host
 def assign_job(jobs_queue, host):
     res = os.system("ping -c 1 " + host[0] + " > /dev/null 2>&1")
-    if (res == 0):
+    if res == 0:
         jobs_lock.acquire()
-        ################################ -> update jobs_queue
+        # ############################### -> update jobs_queue
         for i in range(0, len(jobs_data)):
-            if (jobs_data[i][3] > 0):
+            if jobs_data[i][3] > 0:
                 # check if the job is still running
                 s = pxssh.pxssh()
                 s.sendline("echo $(kill -s 0 " + jobs_data[i][3] + ")")
                 s.prompt()
-                if (s.before == '\n'):
+                # ############################### are you sure this works? no
+                if s.before == '\n':
                     jobs_data[i][3] = -2
                     jobs_queue.put(jobs_data[1])
-                i = i + 1
+                i += 1
         if not jobs_queue.empty():
             try:
                 job = jobs_queue.get()
@@ -75,9 +92,11 @@ def assign_job(jobs_queue, host):
                 #print s.before
                 pid = s.before.split()
                 pid = pid[len(pid)-1]
-                #print pid
-                now = datetime.datetime.now()
-                #os.system("echo " + job + " " + host[0] + " " + host[1] + " " + host[2] + " " + pid + " %d:%d:%d:" % (now.year, now.month, now.day) + "%d:%d:%d" % (now.hour, now.minute, now.second) + " Running >> .log")
+                # print pid
+                # now = datetime.datetime.now()
+                # os.system("echo " + job + " " + host[0] + " " + host[1] + " " + host[2] + " " +
+                # pid + " %d:%d:%d:" % (now.year, now.month, now.day) + "%d:%d:%d" %
+                # (now.hour, now.minute, now.second) + " Running >> .log")
                 s.logout()
                 for job_id in range(0, len(jobs_data)):
                     if (jobs_data[job_id][1]==job):
@@ -90,143 +109,152 @@ def assign_job(jobs_queue, host):
 
 class rThread (threading.Thread):
     def __init__(self, jobs_queue):
+        threading.Thread.__init__(self)
         self.jobs_queue = jobs_queue
+        self.exitFlag = False
     def run(self):
-        # listen to the port and if (received a signal from worker) assign_job(self.jobs_queue, worker, self.defaults, self.dir)
-        while not exitFlag:
+        # listen to the port and if (received a signal from worker)
+        # then assign_job(self.jobs_queue, worker, self.defaults, self.dir)
+        while not self.exitFlag:
             HOST = ''
             PORT = 8000
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.bind((HOST, PORT))
             s.listen(1)
             conn, addr = s.accept()
-            print 'Connected by', addr
-            job_id = 0
-            for job_id in range(0, len(jobs_data)):
-                if (jobs_data[job_id][2] == addr):
-                    jobs_data[job_id][3] = -2
-                    break
-            f = open("_" + job_id + ".out", 'wb')
+            print 'Connected by ', addr
+            job_id = -1
+            all_done = True
+            for jobs_id in range(0, len(jobs_data)):
+                if jobs_data[jobs_id][2] == addr:
+                    jobs_data[jobs_id][3] = -2
+                    job_id = jobs_id
+                elif jobs_data[jobs_id][3] != -2:
+                    all_done = False
+            f = open("_" + str(job_id) + ".out", 'wb')
             while True:
                 data = conn.recv(1024)
                 f.write(data)
-                if not data: break
+                if not data:
+                    break
             conn.close()
-            assign_job(jobs_queue, addr)
-
-
+            if all_done:
+                self.exitFlag = True
+            assign_job(self.jobs_queue, addr)
 
 def main(argv):
-   hosts = ''
-   jobs = ''
-   dir = ''
-   try:
-      opts, args = getopt.getopt(argv,"hi:j:k:",["hosts=","jobs=","dir="])
-   except getopt.GetoptError:
-      print sneak_err
-      sys.exit(2)
-   for opt, arg in opts:
-      if opt == '-h':
-         print sneak_err
-         sys.exit()
-      if opt in ("-i", "--hosts"):
-         hosts = arg
-      if opt in ("-j", "--jobs"):
-         jobs = arg
-      if opt in ("-k", "--dir"):
-         dir = arg
+    hosts = ''
+    jobs = ''
+    dir = ''
+    try:
+        opts, args = getopt.getopt(argv, "hi:j:k:", ["hosts=", "jobs=", "dir="])
+    except getopt.GetoptError:
+        print sneak_err
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print sneak_err
+            sys.exit()
+        if opt in ("-i", "--hosts"):
+            hosts = arg
+        if opt in ("-j", "--jobs"):
+            jobs = arg
+        if opt in ("-k", "--dir"):
+            dir = arg
 
-   if ((hosts=='') or (jobs=='') or (dir=='')):
-       print sneak_err
-       sys.exit(2)
+    if (hosts == '') or (jobs == '') or (dir == ''):
+        print sneak_err
+        sys.exit(2)
+
+    # put all the jobs in the queue and create the database
+    i = 0
+    for line in open(jobs, 'r'):
+        # append job_id, job, server_id, process_id
+        jobs_data.append([i, line.strip(), -1, -1])
+        i += 1
+    jobs_queue = Queue.Queue(len(jobs_data))
+    jobs_lock.acquire()
+    for job in jobs_data:
+        jobs_queue.put(job[1])
+    jobs_lock.release()
+
+    # main listener that listens to workers for an empty spot and sends a job to them
+    recruit = rThread(jobs_queue)
+    recruit.start()
+
+    # find all the workers that are reachable and login-able and ask them to send a signal
+    # default command that needs to be run on workers
+    defaults = "uname -a"
+    data = [line.strip() for line in open(hosts, 'r')]
+    hosts_data = [line.split() for line in data]
+    print "\nCopying files to workers..."
+    for host in hosts_data:
+        res = os.system("ping -c 1 " + host[0] + " > /dev/null 2>&1")
+        if res == 0:
+            # copy the file
+            try:
+                scp = pexpect.spawn("scp -r " + dir + " " + host[1] + "@" + host[0] + ":")
+                scp.force_password = True
+                if scp.expect(["password:", pexpect.EOF]) == 0:
+                    scp.sendline(host[2])
+                    scp.expect(pexpect.EOF)
+                    print host[0] + ":"
+                    print scp.before.strip()
+            except pexpect.ExceptionPexpect, e:
+                print "Failed to copy files: " + host[0]
+                # problem may be that the worker is not added to the known hosts
+        else:
+            print "Host " + host[0] + " unreachable."
+
+    print "\nChecking worker information..."
+    for host in hosts_data:
+        res = os.system("ping -c 1 " + host[0] + " > /dev/null 2>&1")
+        if res == 0:
+            # run a simple job such as uname and send the finished signal to get an actual job
+            try:
+                s = pxssh.pxssh()
+                s.login(host[0], host[1], host[2])
+                # #################################### needs to be done otherwise, no job will be assigned
+                s.sendline(defaults) # adding the signal stuff
+                s.prompt()
+                print host[0] + ": " + s.before.strip()[len(defaults)+1:len(s.before.strip())].strip()
+                s.logout()
+            except pxssh.ExceptionPxssh, e:
+                print "Failed to login: " + host[0]
+        else:
+            print "Host " + host[0] + " unreachable."
+
+    print "\nWarming workers up..."
+    for host in hosts_data:
+        res = os.system("ping -c 1 " + host[0] + " > /dev/null 2>&1")
+        if res == 0:
+            # run a simple job such as uname and send the finished signal to get an actual job
+            try:
+                s = pxssh.pxssh()
+                s.login(host[0], host[1], host[2])
+                s.logout()
+                assign_initial_job("uname -a", host)
+            except pxssh.ExceptionPxssh, e:
+                print "Failed to login: " + host[0]
+        else:
+            print "Host " + host[0] + " unreachable."
+
+    # Wait for queue to empty
+    while not recruit.exitFlag:
+        while not jobs_queue.empty():
+            pass
+        pass
+
+    # Notify threads it's time to exit
+    # exitFlag = True
 
 
-   # main listener that listens to workers for an empty spot and sends a job to them
-   #recruit = rThread(jobs_queue)
-   #recruit.start()
-
-   # put all the jobs in the queue and create the database
-   i = 0
-   for line in open(jobs, 'r'):
-       # append job_id, job, server_id, process_id
-       jobs_data.append([i, line.strip(), -1, -1])
-       i = i + 1
-   jobs_queue = Queue.Queue(len(jobs_data))
-   jobs_lock.acquire()
-   for job in jobs_data:
-       jobs_queue.put(job[1])
-   jobs_lock.release()
-
-   # find all the workers that are reachable and login-able and ask them to send a signal
-   # default command that needs to be run on workers
-   defaults = "uname -a"
-   data = [line.strip() for line in open(hosts, 'r')]
-   hosts_data = [line.split() for line in data]
-   for host in hosts_data:
-       res = os.system("ping -c 1 " + host[0] + " > /dev/null 2>&1")
-       if (res == 0):
-           # copy the file
-           scp = pexpect.spawn("scp -r " + dir + " " + host[1] + "@" + host[0] + ":")
-           if (scp.expect(["password:", pexpect.EOF])==0):
-               scp.sendline(host[2])
-               scp.expect(pexpect.EOF)
-           # run a simple job such as uname and send the finished signal to get an actual job
-           try:
-               s = pxssh.pxssh()
-               s.login (host[0], host[1], host[2])
-               s.sendline(defaults) # also adding the signal stuff
-               s.prompt()
-               s.logout()
-           except pxssh.ExceptionPxssh, e:
-               print "pxssh failed on login."
-               #print str(e)
-
-   # Wait for queue to empty
-   while not jobs_data.empty():
-       pass
-
-   # Notify threads it's time to exit
-   exitFlag = True
-
-
-   for host in hosts_data:
-       res = os.system("ping -c 1 " + host[0] + " > /dev/null 2>&1")
-       if (res == 0):
-           try:
-               s = pxssh.pxssh()
-               s.login (host[0], host[1], host[2])
-               s.sendline("echo '#!/usr/bin/python' > run.py")
-               s.prompt()
-               s.sendline("echo 'import os, socket' >> run.py")
-               s.prompt()
-               s.sendline("echo 'os.system(\"cd dir && python test.py\")' >> run.py")
-               s.prompt()
-               s.sendline("echo 'HOST = \"150.203.210.120\"' >> run.py")
-               s.prompt()
-               s.sendline("echo 'PORT = 8000' >> run.py")
-               s.prompt()
-               s.sendline("echo 's = socket.socket(socket.AF_INET, socket.SOCK_STREAM)' >> run.py")
-               s.prompt()
-               s.sendline("echo 's.connect((HOST, PORT))' >> run.py")
-               s.prompt()
-               s.sendline("echo 's.sendall(\"Hello, world\")' >> run.py")
-               s.prompt()
-               s.sendline("echo 's.close()' >> run.py")
-               s.prompt()
-               #s.sendline("nohup python run.py")
-               #s.prompt()
-               #print s.before
-               #s.logout()
-           except pxssh.ExceptionPxssh, e:
-               print "pxssh failed on login."
-               #print str(e)
-
-   print "finished running"
+    print "finished running"
 
 
 
 
 if __name__ == "__main__":
-   main(sys.argv[1:])
+    main(sys.argv[1:])
 
 
