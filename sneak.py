@@ -6,6 +6,8 @@ sneak_err = 'sneak.py -i <hosts> -j <jobs> -k <project>'
 exitFlag = False
 jobs_lock = threading.Lock()
 jobs_data = []
+# server_ip = "150.203.210.120"  # office
+server_ip = "150.203.242.103"    # room
 
 # read i-th line of file
 def readline(file, i):
@@ -25,7 +27,7 @@ def create_job_runner_file(s, job):
     s.prompt()
     s.sendline("echo 'os.system(\"" + job + " > _job_output\")' >> run.py")
     s.prompt()
-    s.sendline("echo 'HOST = \"150.203.210.120\"' >> run.py")
+    s.sendline("echo 'HOST = \"" + server_ip + "\"' >> run.py")
     s.prompt()
     s.sendline("echo 'PORT = 8000' >> run.py")
     s.prompt()
@@ -69,10 +71,15 @@ def assign_job(jobs_queue, host):
     if res == 0:
         jobs_lock.acquire()
         # ############################### -> update jobs_queue
+        # print len(jobs_data)
         for i in range(0, len(jobs_data)):
             if jobs_data[i][3] > 0:
                 # check if the job is still running
                 s = pxssh.pxssh()
+                for host in hosts_data:
+                    if host[0] == jobs_data[i][2]:
+                        break
+                s.login(host[0], host[1], host[2])
                 s.sendline("echo $(kill -s 0 " + jobs_data[i][3] + ")")
                 s.prompt()
                 # ############################### are you sure this works? no
@@ -112,16 +119,16 @@ class rThread (threading.Thread):
         threading.Thread.__init__(self)
         self.jobs_queue = jobs_queue
         self.exitFlag = False
+        HOST = ''
+        PORT = 8000
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.s.bind((HOST, PORT))
+        self.s.listen(1)
     def run(self):
         # listen to the port and if (received a signal from worker)
         # then assign_job(self.jobs_queue, worker, self.defaults, self.dir)
         while not self.exitFlag:
-            HOST = ''
-            PORT = 8000
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.bind((HOST, PORT))
-            s.listen(1)
-            conn, addr = s.accept()
+            conn, addr = self.s.accept()
             print 'Connected by ', addr
             job_id = -1
             all_done = True
@@ -140,7 +147,9 @@ class rThread (threading.Thread):
             conn.close()
             if all_done:
                 self.exitFlag = True
-            assign_job(self.jobs_queue, addr)
+            for host in hosts_data:
+                if host[0] == addr[0]:
+                    assign_job(self.jobs_queue, host)
 
 def main(argv):
     hosts = ''
@@ -186,6 +195,7 @@ def main(argv):
     # default command that needs to be run on workers
     defaults = "uname -a"
     data = [line.strip() for line in open(hosts, 'r')]
+    global hosts_data
     hosts_data = [line.split() for line in data]
     print "\nCopying files to workers..."
     for host in hosts_data:
@@ -241,7 +251,7 @@ def main(argv):
 
     # Wait for queue to empty
     while not recruit.exitFlag:
-        while not jobs_queue.empty():
+        while not recruit.jobs_queue.empty():
             pass
         pass
 
