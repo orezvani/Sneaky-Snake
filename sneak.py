@@ -6,8 +6,8 @@ sneak_err = 'sneak.py -i <hosts> -j <jobs> -k <project>'
 exitFlag = False
 jobs_lock = threading.Lock()
 jobs_data = []
-# server_ip = "150.203.210.120"  # office
-server_ip = "150.203.242.103"    # room
+server_ip = "150.203.210.120"  # office
+# server_ip = "150.203.242.103"    # room
 
 # read i-th line of file
 def readline(file, i):
@@ -19,13 +19,13 @@ def readline(file, i):
     if (i>j):
         return "line number error"
 
-#added for commit!
+# added for commit!
 def create_job_runner_file(s, job):
     s.sendline("echo '#!/usr/bin/python' > run.py")
     s.prompt()
     s.sendline("echo 'import os, socket, sys' >> run.py")
     s.prompt()
-    s.sendline("echo 'os.system(\"" + job + " > _job_output\")' >> run.py")
+    s.sendline("echo 'os.system(\"" + job + " > ~/_job_output\")' >> run.py")
     s.prompt()
     s.sendline("echo 'HOST = \"" + server_ip + "\"' >> run.py")
     s.prompt()
@@ -82,8 +82,9 @@ def assign_job(jobs_queue, host):
                 s.login(host[0], host[1], host[2])
                 s.sendline("echo $(kill -s 0 " + jobs_data[i][3] + ")")
                 s.prompt()
+                output = s.before
                 # ############################### are you sure this works? no
-                if s.before == '\n':
+                if output == 256:
                     jobs_data[i][3] = -2
                     jobs_queue.put(jobs_data[1])
                 i += 1
