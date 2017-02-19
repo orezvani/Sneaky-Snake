@@ -14,7 +14,7 @@ class server:
         return 0
 
 
-    """ This method returns the status of the job running on the server, 0 is finished, +1 is running """
+    """ This method returns the status of the job running on the server, 0 is killed without proper termination, 0 is properly terminated, +1 is still running """
     def get_job_status():
         return 0;
 
